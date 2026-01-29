@@ -3,25 +3,29 @@ pipeline {
 
   options {
     buildDiscarder(logRotator(numToKeepStr: '10'))
-    timeout(time: 15, unit: 'MINUTES')
+    timeout(time: 20, unit: 'MINUTES')
     disableConcurrentBuilds()
+    timestamps()
   }
 
   environment {
     IMAGE_NAME = 'gitlab-telegram-bot'
     IMAGE_TAG  = "${BUILD_NUMBER}"
+    BUN_INSTALL = "$HOME/.bun"
+    PATH = "$HOME/.bun/bin:$PATH"
+    DEPLOY_PATH = "${params.DEPLOY_PATH ?: '/opt/gitlab-telegram-bot'}"
   }
 
   parameters {
     booleanParam(
       name: 'SKIP_DEPLOY',
       defaultValue: false,
-      description: 'Skip deploy (only build & test)'
+      description: 'Only build & test (skip deploy)'
     )
     string(
       name: 'DEPLOY_PATH',
       defaultValue: '/opt/gitlab-telegram-bot',
-      description: 'Deploy path on server. Env vars via Portainer.'
+      description: 'Deploy path on server'
     )
   }
 
@@ -33,18 +37,16 @@ pipeline {
       }
     }
 
-    stage('Test') {
+    stage('Test (Bun)') {
       steps {
         sh '''
           set -e
+
           if ! command -v bun >/dev/null 2>&1; then
             echo "Installing Bun..."
             curl -fsSL https://bun.sh/install | bash
-            export BUN_INSTALL="$HOME/.bun"
-            export PATH="$BUN_INSTALL/bin:$PATH"
           fi
 
-          export PATH="$HOME/.bun/bin:$PATH"
           bun install --frozen-lockfile
           bun test
         '''
@@ -68,40 +70,68 @@ pipeline {
         expression { !params.SKIP_DEPLOY }
       }
       steps {
-        script {
-          def path = (params.DEPLOY_PATH ?: '/opt/gitlab-telegram-bot').trim()
-          if (!path) path = '/opt/gitlab-telegram-bot'
-          withEnv(["DEPLOY_PATH=${path}"]) {
-            sh '''
-              set -e
-              DEP="${DEPLOY_PATH}"
-              if [ -z "$DEP" ]; then
-                echo "ERROR: DEPLOY_PATH is empty"
-                exit 1
-              fi
-              mkdir -p "$DEP" 
-              cp docker-compose.yml "$DEP/"
-              cd "$DEP"
-              docker compose -f docker-compose.yml up -d --force-recreate
-            '''
-          }
-        }
+        sh '''
+          set -e
+
+          if [ -z "$DEPLOY_PATH" ]; then
+            echo "DEPLOY_PATH is empty"
+            exit 1
+          fi
+
+          mkdir -p "$DEPLOY_PATH"
+          cp docker-compose.yml "$DEPLOY_PATH/"
+
+          cd "$DEPLOY_PATH"
+
+          echo "🚀 Deploying container..."
+          docker compose up -d --force-recreate
+        '''
+      }
+    }
+
+    stage('Health Check') {
+      when {
+        expression { !params.SKIP_DEPLOY }
+      }
+      steps {
+        sh '''
+          set -e
+
+          echo "⏳ Waiting for healthcheck..."
+          for i in {1..15}; do
+            STATUS=$(docker inspect \
+              --format='{{.State.Health.Status}}' \
+              gitlab-telegram-bot || echo "starting")
+
+            if [ "$STATUS" = "healthy" ]; then
+              echo "✅ Service is healthy"
+              exit 0
+            fi
+
+            echo "Status: $STATUS (retry $i/15)"
+            sleep 5
+          done
+
+          echo "❌ Healthcheck failed"
+          docker logs gitlab-telegram-bot || true
+          exit 1
+        '''
       }
     }
   }
 
   post {
     success {
-      echo "✅ Build & deploy successful: ${IMAGE_NAME}:${IMAGE_TAG}"
+      echo "✅ Deploy successful: ${IMAGE_NAME}:${IMAGE_TAG}"
     }
 
     failure {
-      echo "❌ Pipeline failed"
+      echo "❌ Pipeline failed — check logs"
     }
 
     cleanup {
       sh '''
-        docker rmi ${IMAGE_NAME}:${IMAGE_TAG} 2>/dev/null || true
+        docker image rm ${IMAGE_NAME}:${IMAGE_TAG} 2>/dev/null || true
       '''
     }
   }
