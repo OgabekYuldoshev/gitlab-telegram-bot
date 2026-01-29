@@ -60,6 +60,26 @@ Receives GitLab webhooks and forwards events to Telegram (issues, merge requests
 
    Logs: `docker compose logs -f gitlab-telegram-bot`
 
+## Jenkins (CI/CD)
+
+`Jenkinsfile` pipeline: **Checkout → Test** (`bun test` in Docker) **→ Build Docker image → Deploy** (optional).
+
+**Jenkins agent:** Docker installed (for tests and image build). For Deploy: `rsync` and `ssh` to target server.
+
+**Deploy:** rsync project to server (excluding `.git`, `node_modules`, `.env`), then `docker compose up -d --build` on server. Ensure **`.env` exists on the deploy server** (e.g. `DEPLOY_PATH`); it is not rsynced.
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `SKIP_DEPLOY` | If true (default), only build & test; no deploy |
+| `DEPLOY_HOST` | Deploy server hostname or IP |
+| `DEPLOY_USER` | SSH user on deploy server |
+| `DEPLOY_PATH` | App directory on server (default: `/opt/gitlab-telegram-bot`) |
+| `DEPLOY_SSH_CREDENTIALS_ID` | Jenkins credentials ID (SSH username with private key); optional if using default SSH keys |
+
+Create a **Pipeline** job, set “Pipeline script from SCM”, point to this repo. Run with “Build with Parameters” when using Deploy.
+
 ## GitLab Webhook
 
 1. In your GitLab project: **Settings → Webhooks**.
