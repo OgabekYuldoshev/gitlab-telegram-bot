@@ -68,23 +68,28 @@ pipeline {
         expression { !params.SKIP_DEPLOY }
       }
       steps {
-        sh '''
-          set -e
-
-          DEP="${DEPLOY_PATH}"
-
-          mkdir -p "$DEP"
-
-          if [ ! -f "$DEP/.env" ]; then
-            echo "ERROR: $DEP/.env not found"
-            exit 1
-          fi
-
-          cp docker-compose.yml "$DEP/"
-
-          cd "$DEP"
-          docker compose up -d --force-recreate
-        '''
+        script {
+          def path = (params.DEPLOY_PATH ?: '/opt/gitlab-telegram-bot').trim()
+          if (!path) path = '/opt/gitlab-telegram-bot'
+          withEnv(["DEPLOY_PATH=${path}"]) {
+            sh '''
+              set -e
+              DEP="${DEPLOY_PATH}"
+              if [ -z "$DEP" ]; then
+                echo "ERROR: DEPLOY_PATH is empty"
+                exit 1
+              fi
+              mkdir -p "$DEP"
+              if [ ! -f "$DEP/.env" ]; then
+                echo "ERROR: $DEP/.env not found. Create it from .env.example."
+                exit 1
+              fi
+              cp docker-compose.yml "$DEP/"
+              cd "$DEP"
+              docker compose -f docker-compose.yml up -d --force-recreate
+            '''
+          }
+        }
       }
     }
   }
