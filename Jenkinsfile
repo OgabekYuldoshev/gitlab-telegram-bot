@@ -24,11 +24,10 @@ pipeline {
 
         stage('Deploy') {
             steps {
-                echo "🚀 Yangi versiya ishga tushirilmoqda..."
+                echo "🚀 Docker Compose orqali deploy qilinmoqda..."
                 sh """
-                    docker stop ${CONTAINER_NAME} || true
-                    docker rm ${CONTAINER_NAME} || true
-                    docker run -d --name ${CONTAINER_NAME} -p ${PORT}:80 ${IMAGE_NAME}:${BUILD_ID}
+                    export BUILD_ID=${BUILD_ID}
+                    docker-compose -f docker-compose.yml up -d
                 """
             }
         }

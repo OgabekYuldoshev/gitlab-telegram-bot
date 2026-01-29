@@ -2,7 +2,7 @@ version: "3.9"
 
 services:
   gitlab-telegram-bot:
-    image: gitlab-telegram-bot:latest
+    image: gitlab-telegram-bot:${BUILD_ID}   # Jenkins build ID bilan tag ishlatiladi
     container_name: gitlab-telegram-bot
 
     ports:
