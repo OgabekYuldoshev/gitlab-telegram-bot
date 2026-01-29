@@ -1,6 +1,7 @@
 services:
   gitlab-telegram-bot:
-    build: .
+    image: gitlab-telegram-bot:latest
+    container_name: gitlab-telegram-bot
     ports:
       - "${PORT:-3013}:3013"
     env_file: .env

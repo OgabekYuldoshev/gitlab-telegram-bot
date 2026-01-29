@@ -13,11 +13,8 @@ pipeline {
   }
 
   parameters {
-    booleanParam(name: 'SKIP_DEPLOY', defaultValue: true, description: 'Skip deploy stage (only build & test)')
-    string(name: 'DEPLOY_HOST', defaultValue: '', description: 'Deploy server hostname or IP')
-    string(name: 'DEPLOY_USER', defaultValue: '', description: 'SSH user on deploy server')
-    string(name: 'DEPLOY_PATH', defaultValue: '/opt/gitlab-telegram-bot', description: 'App path on deploy server')
-    string(name: 'DEPLOY_SSH_CREDENTIALS_ID', defaultValue: '', description: 'Jenkins credentials ID (SSH username with private key) for deploy')
+    booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: 'Skip deploy (only build & test)')
+    string(name: 'DEPLOY_PATH', defaultValue: '/opt/gitlab-telegram-bot', description: 'Deploy path on this server (Jenkins + Docker host). .env must exist here.')
   }
 
   stages {
@@ -45,46 +42,39 @@ pipeline {
 
     stage('Build Docker') {
       steps {
-        sh '''
-          if command -v docker >/dev/null 2>&1; then
-            docker build -t ''' + env.IMAGE_NAME + ''':''' + env.IMAGE_TAG + ''' -t ''' + env.IMAGE_NAME + ''':latest .
-          else
-            echo "Docker not found on agent, skipping image build (image will be built on deploy server if needed)"
-          fi
-        '''
+        sh "docker build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
       }
     }
 
     stage('Deploy') {
       when {
-        expression { return !params.SKIP_DEPLOY && params.DEPLOY_HOST?.trim() && params.DEPLOY_USER?.trim() }
+        expression { return !params.SKIP_DEPLOY && params.DEPLOY_PATH?.trim() }
       }
       steps {
-        script {
-          def credId = params.DEPLOY_SSH_CREDENTIALS_ID?.trim()
-          def doDeploy = {
-            sh "rsync -avz --delete --exclude '.git' --exclude 'node_modules' --exclude '.env' ./ ${params.DEPLOY_USER}@${params.DEPLOY_HOST}:${params.DEPLOY_PATH}/"
-            sh "ssh -o StrictHostKeyChecking=no ${params.DEPLOY_USER}@${params.DEPLOY_HOST} 'cd ${params.DEPLOY_PATH} && docker compose up -d --build'"
-          }
-          if (credId) {
-            sshagent(credentials: [credId]) { doDeploy() }
-          } else {
-            doDeploy()
-          }
-        }
+        sh """
+          set -e
+          DEPLOY_PATH='${params.DEPLOY_PATH}'
+          mkdir -p "\$DEPLOY_PATH"
+          if [ ! -f "\$DEPLOY_PATH/.env" ]; then
+            echo "ERROR: \$DEPLOY_PATH/.env not found. Create it from .env.example (TELEGRAM_TOKEN, GITLAB_SECRET_TOKEN, GITLAB_TELEGRAM_CHAT_MAPPING, etc.)"
+            exit 1
+          fi
+          cp docker-compose.yml "\$DEPLOY_PATH/"
+          cd "\$DEPLOY_PATH" && docker compose -f docker-compose.yml up -d --force-recreate
+        """
       }
     }
   }
 
   post {
     success {
-      echo "Build ${IMAGE_NAME}:${IMAGE_TAG} completed."
+      echo "Build ${env.IMAGE_NAME}:${env.IMAGE_TAG} completed."
     }
     failure {
       echo "Build failed."
     }
     cleanup {
-      sh 'command -v docker >/dev/null 2>&1 && docker rmi ' + env.IMAGE_NAME + ':' + env.IMAGE_TAG + ' ' + env.IMAGE_NAME + ':latest 2>/dev/null || true'
+      sh "docker rmi ${env.IMAGE_NAME}:${env.IMAGE_TAG} 2>/dev/null || true"
     }
   }
 }

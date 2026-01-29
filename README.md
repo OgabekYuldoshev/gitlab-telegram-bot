@@ -60,25 +60,32 @@ Receives GitLab webhooks and forwards events to Telegram (issues, merge requests
 
    Logs: `docker compose logs -f gitlab-telegram-bot`
 
-## Jenkins (CI/CD)
+## Jenkins (CI/CD) — same server as Docker
 
-`Jenkinsfile` pipeline: **Checkout → Test** (`bun test` in Docker) **→ Build Docker image → Deploy** (optional).
+Pipeline: **Checkout → Test** (Bun) **→ Build Docker image → Deploy** (optional). Jenkins va Docker **bir xil serverda** bo‘lsa, deploy shu hostda `docker compose` bilan avtomatik ishlaydi.
 
-**Jenkins agent:** Docker is **not** required. Tests run with [Bun](https://bun.sh/) (installed automatically if missing). For Deploy: `rsync`, `ssh`, and `curl`; deploy server needs Docker for `docker compose up --build`.
+**Talablar:** Jenkins agentda **Docker** va **curl**; Bun yo‘q bo‘lsa pipeline ichida o‘rnatiladi.
 
-**Deploy:** rsync project to server (excluding `.git`, `node_modules`, `.env`), then `docker compose up -d --build` on server. Ensure **`.env` exists on the deploy server** (e.g. `DEPLOY_PATH`); it is not rsynced.
+**Deploy:** Image `gitlab-telegram-bot:latest` dan yig‘iladi, `docker-compose.deploy.yml` orqali `DEPLOY_PATH` da ishga tushiriladi. **`DEPLOY_PATH` da `.env` bo‘lishi shart** (qo‘lda yoki `cp .env.example .env` dan yaratib, to‘ldiring).
 
 **Parameters:**
 
 | Parameter | Description |
 |-----------|-------------|
-| `SKIP_DEPLOY` | If true (default), only build & test; no deploy |
-| `DEPLOY_HOST` | Deploy server hostname or IP |
-| `DEPLOY_USER` | SSH user on deploy server |
-| `DEPLOY_PATH` | App directory on server (default: `/opt/gitlab-telegram-bot`) |
-| `DEPLOY_SSH_CREDENTIALS_ID` | Jenkins credentials ID (SSH username with private key); optional if using default SSH keys |
+| `SKIP_DEPLOY` | `true` bo‘lsa faqat build & test; deploy o‘tkazilmaydi (default: `false`) |
+| `DEPLOY_PATH` | Deploy papkasi, shu serverda (default: `/opt/gitlab-telegram-bot`) |
 
-Create a **Pipeline** job, set “Pipeline script from SCM”, point to this repo. Run with “Build with Parameters” when using Deploy.
+**Sozlash:**
+
+1. Deploy pathni yarating va `.env` qo‘ying:
+   ```sh
+   sudo mkdir -p /opt/gitlab-telegram-bot
+   sudo cp .env.example /opt/gitlab-telegram-bot/.env
+   sudo chown -R jenkins:jenkins /opt/gitlab-telegram-bot   # yoki Jenkins ishlatadigan user
+   # .env ni tahrirlang: TELEGRAM_TOKEN, GITLAB_SECRET_TOKEN, GITLAB_TELEGRAM_CHAT_MAPPING
+   ```
+2. Jenkins foydalanuvchisiga Docker ishlatish ruxsati bering (masalan `usermod -aG docker jenkins`).
+3. Pipeline job yarating, “Pipeline script from SCM” → bu repo. **Build now** yoki **Build with Parameters** (kerak bo‘lsa `SKIP_DEPLOY` / `DEPLOY_PATH` o‘zgartirish).
 
 ## GitLab Webhook
 
