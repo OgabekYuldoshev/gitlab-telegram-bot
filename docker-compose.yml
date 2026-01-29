@@ -4,7 +4,6 @@ services:
     container_name: gitlab-telegram-bot
     ports:
       - "${PORT:-3013}:3013"
-    env_file: .env
     environment:
       - PORT=3013
     restart: unless-stopped

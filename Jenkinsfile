@@ -21,7 +21,7 @@ pipeline {
     string(
       name: 'DEPLOY_PATH',
       defaultValue: '/opt/gitlab-telegram-bot',
-      description: 'Deploy path on server (must contain .env)'
+      description: 'Deploy path on server. Env vars via Portainer.'
     )
   }
 
@@ -79,11 +79,7 @@ pipeline {
                 echo "ERROR: DEPLOY_PATH is empty"
                 exit 1
               fi
-              mkdir -p "$DEP"
-              if [ ! -f "$DEP/.env" ]; then
-                echo "ERROR: $DEP/.env not found. Create it from .env.example."
-                exit 1
-              fi
+              mkdir -p "$DEP" 
               cp docker-compose.yml "$DEP/"
               cd "$DEP"
               docker compose -f docker-compose.yml up -d --force-recreate
