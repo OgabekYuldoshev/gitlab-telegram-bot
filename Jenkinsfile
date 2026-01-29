@@ -75,7 +75,7 @@ pipeline {
           cd "$DEPLOY_PATH"
 
           echo "🚀 Deploying with docker-compose..."
-          docker compose up --detach --force-recreate
+          docker compose up --force-recreate
         '''
       }
     }
