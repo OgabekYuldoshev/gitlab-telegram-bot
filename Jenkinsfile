@@ -84,7 +84,7 @@ pipeline {
           cd "$DEPLOY_PATH"
 
           echo "🚀 Deploying container..."
-          docker compose up -d --force-recreate
+          docker-compose up -d --force-recreate
         '''
       }
     }
