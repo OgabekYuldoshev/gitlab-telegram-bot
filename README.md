@@ -64,7 +64,7 @@ Receives GitLab webhooks and forwards events to Telegram (issues, merge requests
 
 `Jenkinsfile` pipeline: **Checkout → Test** (`bun test` in Docker) **→ Build Docker image → Deploy** (optional).
 
-**Jenkins agent:** Docker installed (for tests and image build). For Deploy: `rsync` and `ssh` to target server.
+**Jenkins agent:** Docker is **not** required. Tests run with [Bun](https://bun.sh/) (installed automatically if missing). For Deploy: `rsync`, `ssh`, and `curl`; deploy server needs Docker for `docker compose up --build`.
 
 **Deploy:** rsync project to server (excluding `.git`, `node_modules`, `.env`), then `docker compose up -d --build` on server. Ensure **`.env` exists on the deploy server** (e.g. `DEPLOY_PATH`); it is not rsynced.
 

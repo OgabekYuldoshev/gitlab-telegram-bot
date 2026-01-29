@@ -30,15 +30,28 @@ pipeline {
     stage('Test') {
       steps {
         sh '''
-          docker run --rm -v "$(pwd):/app" -w /app oven/bun:1-alpine \
-            bun install --frozen-lockfile && bun test
+          set -e
+          if ! command -v bun >/dev/null 2>&1; then
+            echo "Installing Bun..."
+            curl -fsSL https://bun.sh/install | bash
+            export BUN_INSTALL="$HOME/.bun"
+            export PATH="$HOME/.bun/bin:$PATH"
+          fi
+          bun install --frozen-lockfile
+          bun test
         '''
       }
     }
 
     stage('Build Docker') {
       steps {
-        sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
+        sh '''
+          if command -v docker >/dev/null 2>&1; then
+            docker build -t ''' + env.IMAGE_NAME + ''':''' + env.IMAGE_TAG + ''' -t ''' + env.IMAGE_NAME + ''':latest .
+          else
+            echo "Docker not found on agent, skipping image build (image will be built on deploy server if needed)"
+          fi
+        '''
       }
     }
 
@@ -71,7 +84,7 @@ pipeline {
       echo "Build failed."
     }
     cleanup {
-      sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:latest 2>/dev/null || true"
+      sh 'command -v docker >/dev/null 2>&1 && docker rmi ' + env.IMAGE_NAME + ':' + env.IMAGE_TAG + ' ' + env.IMAGE_NAME + ':latest 2>/dev/null || true'
     }
   }
 }
