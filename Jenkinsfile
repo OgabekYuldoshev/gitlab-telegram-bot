@@ -14,7 +14,7 @@ pipeline {
 
   parameters {
     booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: 'Skip deploy (only build & test)')
-    string(name: 'DEPLOY_PATH', defaultValue: '/opt/gitlab-telegram-bot', description: 'Deploy path on this server (Jenkins + Docker host). .env must exist here.')
+    string(name: 'DEPLOY_PATH', defaultValue: '/opt/gitlab-telegram-bot', description: 'Deploy path on this server. .env must exist here. Must be mounted into Jenkins container.')
   }
 
   stages {
@@ -42,7 +42,11 @@ pipeline {
 
     stage('Build Docker') {
       steps {
-        sh "docker build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
+        script {
+          docker.image('docker:24').inside("-v /var/run/docker.sock:/var/run/docker.sock") {
+            sh "docker build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
+          }
+        }
       }
     }
 
@@ -51,17 +55,21 @@ pipeline {
         expression { return !params.SKIP_DEPLOY && params.DEPLOY_PATH?.trim() }
       }
       steps {
-        sh """
-          set -e
-          DEPLOY_PATH='${params.DEPLOY_PATH}'
-          mkdir -p "\$DEPLOY_PATH"
-          if [ ! -f "\$DEPLOY_PATH/.env" ]; then
-            echo "ERROR: \$DEPLOY_PATH/.env not found. Create it from .env.example (TELEGRAM_TOKEN, GITLAB_SECRET_TOKEN, GITLAB_TELEGRAM_CHAT_MAPPING, etc.)"
-            exit 1
-          fi
-          cp docker-compose.yml "\$DEPLOY_PATH/"
-          cd "\$DEPLOY_PATH" && docker compose -f docker-compose.yml up -d --force-recreate
-        """
+        script {
+          def dep = params.DEPLOY_PATH.trim()
+          sh """
+            set -e
+            mkdir -p '${dep}'
+            if [ ! -f '${dep}/.env' ]; then
+              echo "ERROR: ${dep}/.env not found. Create it from .env.example."
+              exit 1
+            fi
+            cp docker-compose.yml '${dep}/'
+          """
+          docker.image('docker:24').inside("-v /var/run/docker.sock:/var/run/docker.sock -v ${dep}:${dep}") {
+            sh "cd ${dep} && docker compose -f docker-compose.yml up -d --force-recreate"
+          }
+        }
       }
     }
   }
@@ -74,7 +82,13 @@ pipeline {
       echo "Build failed."
     }
     cleanup {
-      sh "docker rmi ${env.IMAGE_NAME}:${env.IMAGE_TAG} 2>/dev/null || true"
+      script {
+        catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+          docker.image('docker:24').inside("-v /var/run/docker.sock:/var/run/docker.sock") {
+            sh "docker rmi ${env.IMAGE_NAME}:${env.IMAGE_TAG} 2>/dev/null || true"
+          }
+        }
+      }
     }
   }
 }

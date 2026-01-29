@@ -62,30 +62,41 @@ Receives GitLab webhooks and forwards events to Telegram (issues, merge requests
 
 ## Jenkins (CI/CD) — same server as Docker
 
-Pipeline: **Checkout → Test** (Bun) **→ Build Docker image → Deploy** (optional). Jenkins va Docker **bir xil serverda** bo‘lsa, deploy shu hostda `docker compose` bilan avtomatik ishlaydi.
+Pipeline: **Checkout → Test** (Bun) **→ Build Docker** (`docker:24` container + socket) **→ Deploy** (optional). Build va Deploy **Docker Pipeline** plugin orqali `docker:24` image ichida ishlaydi, shuning uchun Jenkins containerida `docker` o‘rnatilishi shart emas.
 
-**Talablar:** Jenkins agentda **Docker** va **curl**; Bun yo‘q bo‘lsa pipeline ichida o‘rnatiladi.
+**Talablar:**
 
-**Deploy:** Image `gitlab-telegram-bot:latest` dan yig‘iladi, `docker-compose.deploy.yml` orqali `DEPLOY_PATH` da ishga tushiriladi. **`DEPLOY_PATH` da `.env` bo‘lishi shart** (qo‘lda yoki `cp .env.example .env` dan yaratib, to‘ldiring).
+- **Docker Pipeline** plugin o‘rnatilgan bo‘lsin (Manage Jenkins → Plugins).
+- Jenkins **Docker socket** bilan ishlashi kerak: `-v /var/run/docker.sock:/var/run/docker.sock`.
+- **`DEPLOY_PATH`** (masalan `/opt/gitlab-telegram-bot`) Jenkins containeriga mount qilingan bo‘lsin: `-v /opt/gitlab-telegram-bot:/opt/gitlab-telegram-bot`.
+
+**Deploy:** Image build qilinadi, `docker-compose.yml` `DEPLOY_PATH` ga nusxalanadi, shu yerda `docker compose up -d --force-recreate` ishlatiladi. **`DEPLOY_PATH` da `.env` bo‘lishi shart.**
 
 **Parameters:**
 
 | Parameter | Description |
 |-----------|-------------|
-| `SKIP_DEPLOY` | `true` bo‘lsa faqat build & test; deploy o‘tkazilmaydi (default: `false`) |
-| `DEPLOY_PATH` | Deploy papkasi, shu serverda (default: `/opt/gitlab-telegram-bot`) |
+| `SKIP_DEPLOY` | `true` bo‘lsa faqat build & test (default: `false`) |
+| `DEPLOY_PATH` | Deploy papkasi (default: `/opt/gitlab-telegram-bot`) |
 
-**Sozlash:**
+**Sozlash (Jenkins Docker da):**
 
-1. Deploy pathni yarating va `.env` qo‘ying:
+1. Deploy path va `.env`:
    ```sh
    sudo mkdir -p /opt/gitlab-telegram-bot
    sudo cp .env.example /opt/gitlab-telegram-bot/.env
-   sudo chown -R jenkins:jenkins /opt/gitlab-telegram-bot   # yoki Jenkins ishlatadigan user
    # .env ni tahrirlang: TELEGRAM_TOKEN, GITLAB_SECRET_TOKEN, GITLAB_TELEGRAM_CHAT_MAPPING
    ```
-2. Jenkins foydalanuvchisiga Docker ishlatish ruxsati bering (masalan `usermod -aG docker jenkins`).
-3. Pipeline job yarating, “Pipeline script from SCM” → bu repo. **Build now** yoki **Build with Parameters** (kerak bo‘lsa `SKIP_DEPLOY` / `DEPLOY_PATH` o‘zgartirish).
+2. Jenkins containerini socket va `DEPLOY_PATH` bilan ishga tushiring:
+   ```sh
+   docker run -d --name jenkins \
+     -v /var/jenkins_home:/var/jenkins_home \
+     -v /var/run/docker.sock:/var/run/docker.sock \
+     -v /opt/gitlab-telegram-bot:/opt/gitlab-telegram-bot \
+     -p 8080:8080 jenkins/jenkins:lts
+   ```
+3. Jenkins’da **Docker Pipeline** plugin o‘rnating.
+4. Pipeline job → “Pipeline script from SCM” → bu repo. **Build now** yoki **Build with Parameters**.
 
 ## GitLab Webhook
 
