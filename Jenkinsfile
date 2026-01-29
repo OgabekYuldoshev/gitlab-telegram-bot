@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = 'gitlab-telegram-bot'
-        CONTAINER_NAME = 'gitlab-telegram-bot-container'
+        CONTAINER_NAME = 'gitlab-telegram-bot'
         PORT = '5500'
     }
 
