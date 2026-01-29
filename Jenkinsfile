@@ -9,15 +9,24 @@ pipeline {
 
   environment {
     IMAGE_NAME = 'gitlab-telegram-bot'
-    IMAGE_TAG = "${env.BUILD_NUMBER}"
+    IMAGE_TAG  = "${BUILD_NUMBER}"
   }
 
   parameters {
-    booleanParam(name: 'SKIP_DEPLOY', defaultValue: false, description: 'Skip deploy (only build & test)')
-    string(name: 'DEPLOY_PATH', defaultValue: '/opt/gitlab-telegram-bot', description: 'Deploy path on this server. .env must exist here. Must be mounted into Jenkins container.')
+    booleanParam(
+      name: 'SKIP_DEPLOY',
+      defaultValue: false,
+      description: 'Skip deploy (only build & test)'
+    )
+    string(
+      name: 'DEPLOY_PATH',
+      defaultValue: '/opt/gitlab-telegram-bot',
+      description: 'Deploy path on server (must contain .env)'
+    )
   }
 
   stages {
+
     stage('Checkout') {
       steps {
         checkout scm
@@ -32,63 +41,67 @@ pipeline {
             echo "Installing Bun..."
             curl -fsSL https://bun.sh/install | bash
             export BUN_INSTALL="$HOME/.bun"
-            export PATH="$HOME/.bun/bin:$PATH"
+            export PATH="$BUN_INSTALL/bin:$PATH"
           fi
+
+          export PATH="$HOME/.bun/bin:$PATH"
           bun install --frozen-lockfile
           bun test
         '''
       }
     }
 
-    stage('Build Docker') {
+    stage('Build Docker Image') {
       steps {
-        script {
-          docker.image('docker:24').inside("-v /var/run/docker.sock:/var/run/docker.sock") {
-            sh "docker build -t ${env.IMAGE_NAME}:${env.IMAGE_TAG} -t ${env.IMAGE_NAME}:latest ."
-          }
-        }
+        sh '''
+          set -e
+          docker build \
+            -t ${IMAGE_NAME}:${IMAGE_TAG} \
+            -t ${IMAGE_NAME}:latest \
+            .
+        '''
       }
     }
 
     stage('Deploy') {
       when {
-        expression { return !params.SKIP_DEPLOY && params.DEPLOY_PATH?.trim() }
+        expression { !params.SKIP_DEPLOY }
       }
       steps {
-        script {
-          def dep = params.DEPLOY_PATH.trim()
-          sh """
-            set -e
-            mkdir -p '${dep}'
-            if [ ! -f '${dep}/.env' ]; then
-              echo "ERROR: ${dep}/.env not found. Create it from .env.example."
-              exit 1
-            fi
-            cp docker-compose.yml '${dep}/'
-          """
-          docker.image('docker:24').inside("-v /var/run/docker.sock:/var/run/docker.sock -v ${dep}:${dep}") {
-            sh "cd ${dep} && docker compose -f docker-compose.yml up -d --force-recreate"
-          }
-        }
+        sh '''
+          set -e
+
+          DEP="${DEPLOY_PATH}"
+
+          mkdir -p "$DEP"
+
+          if [ ! -f "$DEP/.env" ]; then
+            echo "ERROR: $DEP/.env not found"
+            exit 1
+          fi
+
+          cp docker-compose.yml "$DEP/"
+
+          cd "$DEP"
+          docker compose up -d --force-recreate
+        '''
       }
     }
   }
 
   post {
     success {
-      echo "Build ${env.IMAGE_NAME}:${env.IMAGE_TAG} completed."
+      echo "✅ Build & deploy successful: ${IMAGE_NAME}:${IMAGE_TAG}"
     }
+
     failure {
-      echo "Build failed."
+      echo "❌ Pipeline failed"
     }
+
     cleanup {
-      script {
-        catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-          docker.image('docker:24').inside("-v /var/run/docker.sock:/var/run/docker.sock") {
-            sh "docker rmi ${env.IMAGE_NAME}:${env.IMAGE_TAG} 2>/dev/null || true"
-          }
-        }
-      }
+      sh '''
+        docker rmi ${IMAGE_NAME}:${IMAGE_TAG} 2>/dev/null || true
+      '''
     }
   }
 }
