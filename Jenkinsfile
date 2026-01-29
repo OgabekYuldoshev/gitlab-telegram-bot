@@ -70,17 +70,12 @@ pipeline {
         sh '''
           set -e
 
-          command -v docker-compose >/dev/null 2>&1 || {
-            echo "docker-compose not installed"
-            exit 1
-          }
-
           mkdir -p "$DEPLOY_PATH"
           cp docker-compose.yml "$DEPLOY_PATH/"
           cd "$DEPLOY_PATH"
 
           echo "🚀 Deploying with docker-compose..."
-          docker-compose up -d --force-recreate
+          docker compose up -d --force-recreate
         '''
       }
     }
