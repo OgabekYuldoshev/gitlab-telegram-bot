@@ -27,6 +27,7 @@ pipeline {
                 echo "🚀 Docker Compose orqali deploy qilinmoqda..."
                 sh """
                     export BUILD_ID=${BUILD_ID}
+                    docker compose --help
                     docker compose up -d
                 """
             }
