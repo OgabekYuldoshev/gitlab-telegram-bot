@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  gitlab-telegram-bot:
+    image: gitlab-telegram-bot:latest
+    container_name: gitlab-telegram-bot
+
+    ports:
+      - "${PORT:-3013}:3013"
+
+    environment:
+      PORT: 3013
+      NODE_ENV: production
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:3013/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
