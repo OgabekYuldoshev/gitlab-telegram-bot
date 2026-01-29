@@ -20,12 +20,12 @@ pipeline {
     booleanParam(
       name: 'SKIP_DEPLOY',
       defaultValue: false,
-      description: 'Only build & test (skip deploy)'
+      description: 'Only build & test'
     )
     string(
       name: 'DEPLOY_PATH',
       defaultValue: '/opt/gitlab-telegram-bot',
-      description: 'Deploy path on server'
+      description: 'Deploy path'
     )
   }
 
@@ -41,12 +41,9 @@ pipeline {
       steps {
         sh '''
           set -e
-
           if ! command -v bun >/dev/null 2>&1; then
-            echo "Installing Bun..."
             curl -fsSL https://bun.sh/install | bash
           fi
-
           bun install --frozen-lockfile
           bun test
         '''
@@ -73,18 +70,17 @@ pipeline {
         sh '''
           set -e
 
-          if [ -z "$DEPLOY_PATH" ]; then
-            echo "DEPLOY_PATH is empty"
+          command -v docker-compose >/dev/null 2>&1 || {
+            echo "docker-compose not installed"
             exit 1
-          fi
+          }
 
           mkdir -p "$DEPLOY_PATH"
           cp docker-compose.yml "$DEPLOY_PATH/"
-
           cd "$DEPLOY_PATH"
 
-          echo "🚀 Deploying container..."
-          docker compose up -d --force-recreate
+          echo "🚀 Deploying with docker-compose..."
+          docker-compose up -d --force-recreate
         '''
       }
     }
@@ -96,8 +92,8 @@ pipeline {
       steps {
         sh '''
           set -e
-
           echo "⏳ Waiting for healthcheck..."
+
           for i in {1..15}; do
             STATUS=$(docker inspect \
               --format='{{.State.Health.Status}}' \
@@ -108,11 +104,10 @@ pipeline {
               exit 0
             fi
 
-            echo "Status: $STATUS (retry $i/15)"
+            echo "Status: $STATUS ($i/15)"
             sleep 5
           done
 
-          echo "❌ Healthcheck failed"
           docker logs gitlab-telegram-bot || true
           exit 1
         '''
@@ -126,7 +121,7 @@ pipeline {
     }
 
     failure {
-      echo "❌ Pipeline failed — check logs"
+      echo "❌ Pipeline failed"
     }
 
     cleanup {
